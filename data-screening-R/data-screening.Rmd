@@ -1,0 +1,295 @@
+---
+title: "rsvp-data-analysis"
+author: "Xiaoyi Liu"
+output: html_document
+---
+
+```{r INIT, echo=F, warning=F}
+suppressPackageStartupMessages(library(jsonlite))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(psycho))
+suppressPackageStartupMessages(library(plotrix))
+suppressPackageStartupMessages(library(Hmisc))
+suppressPackageStartupMessages(library(ez))
+
+add_pes = function(ezanova_output){
+  ezanova_output$ANOVA$pes = ezanova_output$ANOVA$SSn / (ezanova_output$ANOVA$SSn + ezanova_output$ANOVA$SSd)
+  print(ezanova_output)
+}
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Data frames}
+# load data
+load("alldata.Rda") # all participants
+load("data.Rda") # all typical participants
+load("demographics.Rda") # demographic data of all participants
+
+atypical.subject = c('4q3vm', '6441e', 'c09c9', 'grfw4', 'q0qkb', 'rwbcg', 'uzygt', 'ybmn9') # grfw4 (40),6441e (145)
+excluded.subject = c('am9m0', '9znef', 'hnzcd', 'jheub', 'kkccj','lzbzc') # all have >100 Hz refresh rate except kkccj and lzbzc
+
+# one-target trials
+one.dat <- full.dat %>%
+  filter(isi == -34)
+# catch trials
+none.dat <- full.dat %>%
+  filter(is.na(isi))
+# dual-target trials
+dual.dat <- full.dat %>%
+  filter(isi != -34 & !is.na(isi))
+
+# all participants data
+isi.dat <- data.dat %>%
+  group_by(subject, isi) %>%
+  summarise(face.detection.acc.mean = mean(face.detection.acc),
+            gender.acc.mean = mean(gender.acc, na.rm = TRUE))
+
+isi.dat <- isi.dat %>%
+  filter(!subject %in% excluded.subject) %>%
+  merge(demographics, by = 'subject')
+
+
+isi.dat$face.detection.acc.mean = isi.dat$face.detection.acc.mean*100
+isi.dat$gender.acc.mean = isi.dat$gender.acc.mean*100
+```
+
+```{r Demographic info}
+# atypical
+atypical.mean.age = mean(demographics$age[demographics$pattern.group=='atypical'])
+atypical.sd.age = sd(demographics$age[demographics$pattern.group=='atypical'])
+
+n_asian_a = sum(demographics$ethnicity[demographics$pattern.group=='atypical'] == 'Asian')
+n_black_a = sum(demographics$ethnicity[demographics$pattern.group=='atypical'] == 'Black')
+n_latino_a = sum(demographics$ethnicity[demographics$pattern.group=='atypical'] == 'Hispanics')
+n_white_a = sum(demographics$ethnicity[demographics$pattern.group=='atypical'] == 'White')
+
+n_female_a = sum(demographics$gender[demographics$pattern.group=='atypical'] == 'female')
+n_male_a = sum(demographics$gender[demographics$pattern.group=='atypical'] == 'male')
+
+# typical
+typical.mean.age = mean(demographics$age[demographics$pattern.group=='typical'])
+typical.sd.age = sd(demographics$age[demographics$pattern.group=='typical'])
+
+n_asian = sum(demographics$ethnicity[demographics$pattern.group=='typical'] == 'Asian')
+n_black = sum(demographics$ethnicity[demographics$pattern.group=='typical'] == 'Black')
+n_latino = sum(demographics$ethnicity[demographics$pattern.group=='typical'] == 'Hispanics')
+n_white = sum(demographics$ethnicity[demographics$pattern.group=='typical'] == 'White')
+
+n_asian_f = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='female'] == 'Asian')
+n_asian_m = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='male'] == 'Asian')
+n_black_f = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='female'] == 'Black')
+n_black_m = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='male'] == 'Black')
+n_latino_f = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='female'] == 'Hispanics')
+n_latino_m = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='male'] == 'Hispanics')
+n_white_f = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='female'] == 'White')
+n_white_m = sum(demographics$ethnicity[demographics$pattern.group=='typical' & demographics$gender=='male'] == 'White')
+
+pro_asian = mean(demographics$ethnicity[demographics$pattern.group=='typical'] == 'Asian')
+pro_black = mean(demographics$ethnicity[demographics$pattern.group=='typical'] == 'Black')
+pro_hispanic = mean(demographics$ethnicity[demographics$pattern.group=='typical'] == 'Hispanics')
+pro_white = mean(demographics$ethnicity[demographics$pattern.group=='typical'] == 'White')
+
+n_female = sum(demographics$gender[demographics$pattern.group=='typical'] == 'female')
+n_male = sum(demographics$gender[demographics$pattern.group=='typical'] == 'male')
+
+pro_female = mean(demographics$gender[demographics$pattern.group=='typical'] == 'female')
+pro_male = mean(demographics$gender[demographics$pattern.group=='typical'] == 'male')
+```
+
+```{r Overall pattern visualization}
+one.target.patterns <- isi.dat %>%
+  filter(isi == -34)
+none.target.patterns <- isi.dat %>%
+  filter(is.na(isi))
+dual.target.patterns <- isi.dat %>%
+  filter(isi != -34 & !is.na(isi))
+
+colors <- c("one-target trials" = "red", "catch trials" = "blue")
+linetypes <- c("typical" = "solid", "atypical" = "dashed")
+
+ggplot(dual.target.patterns, aes(isi, face.detection.acc.mean, linetype = pattern.group))+
+  geom_point(stat="summary", fun.y="mean", size = 0.5) +
+  geom_line(stat = "summary", fun.y = "mean", size = 2)+
+  geom_errorbar(stat="summary", fun.data="mean_se",size = 0.5, width = 0.005) +
+  scale_linetype_manual(values=linetypes)+
+  theme_bw()+
+ theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+                              panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) +
+  geom_hline(yintercept=50, linetype="dotted") +
+  geom_hline(aes(yintercept = mean(one.target.patterns$face.detection.acc.mean[one.target.patterns$pattern.group == 'typical']), color = 'one-target trials', linetype = "typical"), size = 1.2)+
+  geom_hline(aes(yintercept = mean(one.target.patterns$face.detection.acc.mean[one.target.patterns$pattern.group == 'atypical']),  color = 'one-target trials', linetype = "atypical"), size = 1.2)+
+  geom_hline(aes(yintercept = mean(none.target.patterns$face.detection.acc.mean[none.target.patterns$pattern.group == 'typical']),  color = 'catch trials', linetype = "typical"), size = 1.2)+
+  geom_hline(aes(yintercept = mean(none.target.patterns$face.detection.acc.mean[none.target.patterns$pattern.group == 'atypical']),  color = 'catch trials', linetype = "atypical"), size = 1.2)+
+  scale_color_manual(values = colors)+
+  scale_y_continuous(name = "Face detection accuracy",
+                     breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100)) +
+  scale_x_continuous(name = "ISI (ms)", 
+                     breaks = c(0, 100, 200, 300, 400, 500, 600, 700))
+
+```
+
+```{r stats tests}
+# atypical
+atypical.patterns <- isi.dat %>%
+  filter(subject %in% atypical.subject)
+
+atypical.one.target.patterns <- atypical.patterns %>%
+  filter(isi == -34)
+atypical.none.target.patterns <- atypical.patterns %>%
+  filter(is.na(isi))
+atypical.dual.target.patterns <- atypical.patterns %>%
+  filter(isi != -34 & !is.na(isi))
+
+# typical
+typical.isi.dat <- isi.dat %>%
+  filter(pattern.group == 'typical') %>%
+  select(c('subject', 'isi', 'face.detection.acc.mean', 'gender.acc.mean'))
+typical.one.target.patterns <- typical.isi.dat %>%
+  filter(isi == -34)
+typical.none.target.patterns <- typical.isi.dat %>%
+  filter(is.na(isi))
+typical.dual.target.patterns <- typical.isi.dat %>%
+  filter(isi != -34 & !is.na(isi))
+
+# none target trials
+mean(typical.none.target.patterns$face.detection.acc.mean) # 91.65
+sd(typical.none.target.patterns$face.detection.acc.mean) # 9.12
+
+mean(atypical.none.target.patterns$face.detection.acc.mean) # 98.09
+sd(atypical.none.target.patterns$face.detection.acc.mean) # 3.75
+
+t.test(typical.none.target.patterns$face.detection.acc.mean,
+       atypical.none.target.patterns$face.detection.acc.mean)
+
+# one target trials
+mean(typical.one.target.patterns$face.detection.acc.mean) # 42.86
+sd(typical.one.target.patterns$face.detection.acc.mean) # 21.30
+
+mean(atypical.one.target.patterns$face.detection.acc.mean) # 4.86
+sd(atypical.one.target.patterns$face.detection.acc.mean) # 6.68
+
+t.test(typical.one.target.patterns$face.detection.acc.mean,
+       atypical.one.target.patterns$face.detection.acc.mean)
+
+
+mean(typical.one.target.patterns$gender.acc.mean) # 56.402
+sd(typical.one.target.patterns$gender.acc.mean) # 8.021
+
+# 0 ISI condition
+mean(typical.dual.target.patterns$face.detection.acc.mean[typical.dual.target.patterns$isi == 0]) # 93.75
+sd(typical.dual.target.patterns$face.detection.acc.mean[typical.dual.target.patterns$isi == 0]) #9.93
+
+mean(atypical.dual.target.patterns$face.detection.acc.mean[atypical.dual.target.patterns$isi == 0]) # 2.78
+sd(atypical.dual.target.patterns$face.detection.acc.mean[atypical.dual.target.patterns$isi == 0]) # 5.05
+
+t.test(typical.dual.target.patterns$face.detection.acc.mean[typical.dual.target.patterns$isi == 0],
+       atypical.dual.target.patterns$face.detection.acc.mean[atypical.dual.target.patterns$isi == 0])
+
+# convergence level
+aidv.convergence.level <- atypical.dual.target.patterns %>%
+  filter(isi %in% c(442, 476, 510, 544, 578, 612, 646)) %>%
+  group_by(subject) %>%
+  summarise(face.detection.acc.mean = mean(face.detection.acc.mean),
+            gender.acc.mean = mean(gender.acc.mean))
+mean(aidv.convergence.level$face.detection.acc.mean) # 82.44
+
+
+idv.convergence.level <- typical.dual.target.patterns %>%
+  filter(isi %in% c(442, 476, 510, 544, 578, 612, 646)) %>%
+  group_by(subject) %>%
+  summarise(face.detection.acc.mean = mean(face.detection.acc.mean),
+            gender.acc.mean = mean(gender.acc.mean))
+mean(idv.convergence.level$face.detection.acc.mean) #58.60
+
+t.test(typical.one.target.patterns$face.detection.acc.mean, idv.convergence.level$face.detection.acc.mean, paired = TRUE)
+
+# Convergence level anova
+summary.dat <- full.dat %>%
+  group_by(subject, isi, isGender, isRace, gender, ethnicity, gender.group, race.group) %>%
+  summarise(face.detection.acc = mean(face.detection.acc),
+            gender.acc, mean(gender.acc))
+
+stable.acc.dat <- summary.dat %>%
+  filter(isi %in% c(442, 476, 510, 544, 578, 612, 646)) %>%
+  group_by(subject, isGender,isRace, gender,ethnicity, gender.group) %>%
+  summarise(face.detection.acc = mean(face.detection.acc),
+            gender.acc = mean(gender.acc))
+
+rsvp_anova = ezANOVA(
+  stable.acc.dat
+  , face.detection.acc
+  , subject
+  , within = .(isGender, isRace)
+  , within_full = NULL
+  , within_covariates = NULL
+  , between = .(gender, ethnicity)
+  , between_covariates = NULL
+  , observed = NULL
+  , diff = NULL
+  , reverse_diff = FALSE
+  , type = 3
+  , white.adjust = FALSE
+  , detailed = TRUE
+  , return_aov = FALSE
+)
+add_pes(rsvp_anova)
+
+#gender
+gender.acc.dat <- stable.acc.dat %>%
+  group_by(subject, isGender) %>%
+  summarise(face.detection.acc = mean(face.detection.acc))
+mean(gender.acc.dat$face.detection.acc[gender.acc.dat$isGender == 'female']) # 57.88
+sd(gender.acc.dat$face.detection.acc[gender.acc.dat$isGender == 'female']) # 22.09
+mean(gender.acc.dat$face.detection.acc[gender.acc.dat$isGender == 'male']) # 59.31
+sd(gender.acc.dat$face.detection.acc[gender.acc.dat$isGender == 'male']) # 21.98
+t.test(gender.acc.dat$face.detection.acc[gender.acc.dat$isGender == 'female'], gender.acc.dat$face.detection.acc[gender.acc.dat$isGender == 'male'], paired = T)
+
+sgender.acc.dat<- stable.acc.dat %>%
+  group_by(subject, gender) %>%
+  summarise(face.detection.acc = mean(face.detection.acc))
+mean(sgender.acc.dat$face.detection.acc[sgender.acc.dat$gender == 'female']) # 59.28
+mean(sgender.acc.dat$face.detection.acc[sgender.acc.dat$gender == 'male']) # 57.81
+t.test(sgender.acc.dat$face.detection.acc[sgender.acc.dat$gender == 'female'], sgender.acc.dat$face.detection.acc[sgender.acc.dat$gender == 'male'])
+
+gender.group.acc.dat <- stable.acc.dat %>%
+  group_by(subject, gender.group) %>%
+  summarise(face.detection.acc = mean(face.detection.acc))
+mean(gender.group.acc.dat$face.detection.acc[gender.group.acc.dat$gender.group == 'same gender']) # 58.45
+mean(gender.group.acc.dat$face.detection.acc[gender.group.acc.dat$gender.group == 'other gender']) # 58.74
+t.test(gender.group.acc.dat$face.detection.acc[gender.group.acc.dat$gender.group == 'same gender'], gender.group.acc.dat$face.detection.acc[gender.group.acc.dat$gender.group == 'other gender'], paired = T)
+
+#race
+race.acc.dat <- stable.acc.dat %>%
+  group_by(subject, isRace) %>%
+  summarise(face.detection.acc = mean(face.detection.acc))
+mean(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'Asian']) # 57.30
+sd(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'Asian']) # 22.91
+
+
+mean(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'Black']) # 59.32
+sd(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'Black']) # 23.25
+
+mean(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'Hispanics']) # 60.43
+sd(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'Hispanics']) # 22.20
+
+mean(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'White']) # 57.35
+sd(race.acc.dat$face.detection.acc[race.acc.dat$isRace == 'White']) # 22.31
+
+
+srace.acc.dat <- stable.acc.dat %>%
+  group_by(subject, ethnicity) %>%
+  summarise(face.detection.acc = mean(face.detection.acc))
+mean(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'Asian']) # 55.17
+sd(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'Asian']) # 24.26
+
+
+mean(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'Black']) # 64.15
+sd(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'Black']) # 20.85
+
+mean(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'Hispanics']) # 65.21
+sd(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'Hispanics']) # 19.34
+
+mean(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'White']) # 52.89
+sd(srace.acc.dat$face.detection.acc[srace.acc.dat$ethnicity == 'White']) # 19.98
+```
